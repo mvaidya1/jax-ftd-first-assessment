@@ -19,12 +19,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.cooksys.ftd.inserts.dao.FileDao;
+import com.cooksys.ftd.inserts.dao.FileUserDao;
 import com.cooksys.ftd.inserts.dao.UserDao;
 import com.cooksys.ftd.inserts.model.db.User;
 import com.cooksys.ftd.inserts.model.db.UserFile;
 
 @XmlRootElement
 public class Message {
+
 private Logger log = LoggerFactory.getLogger(Message.class);
 	
 	private BufferedReader reader;
@@ -34,6 +36,9 @@ private Logger log = LoggerFactory.getLogger(Message.class);
 	Map<String, Object> properties = new HashMap<String, Object>();
 	private String serverId;
 	private UserDao userDao;
+	private FileDao fileDao;
+	private FileUserDao userFileDao;
+	
 	private Map<String, Object> args = new HashMap<>();
 	
 	public String getCommand() {
@@ -148,16 +153,20 @@ private Logger log = LoggerFactory.getLogger(Message.class);
 		
 		AbstractCom upCmd = new UploadCom();
 		upCmd.setUser(tempUser);
-		
+		upCmd.setFileUserDao(userFileDao);
+		upCmd.setFileDao(fileDao);
 		upCmd.executeCommand(data, properties);
 		
-		
-		 if (upCmd.getUserFile().getFileId() == null)
+		if (upCmd.getUserFile() == null)
+			response.setMessage("Error when reading file.");
+		else if (upCmd.getUserFile().getFileId() == -1)
+			response.setMessage("Error when storing file to database.");
+		else if (upCmd.getUserFile().getFileId() == null)
 			response.setMessage("Error when setting up user file relashionship.");
 		else if (upCmd.getUserFile().getFileId() == -1 || upCmd.getUserFile().getFileId() == -1)
 			response.setMessage("Error when writing user file relashionship.");
 		else {
-			
+			response.setData(upCmd.getUserFile());
 			response.setMessage("File has been sucessfully written.");
 		}
 		sendResponse(response);
@@ -179,6 +188,8 @@ private Logger log = LoggerFactory.getLogger(Message.class);
 		
 		AbstractCom downCmd = new DownloadCom();
 		downCmd.setUser(tempUser);
+		downCmd.setFileDao(fileDao);
+		downCmd.setFileUserDao(userFileDao);
 		downCmd.executeCommand(data, properties);
 		
 		FileDao resultFileD = downCmd.getFileDao();

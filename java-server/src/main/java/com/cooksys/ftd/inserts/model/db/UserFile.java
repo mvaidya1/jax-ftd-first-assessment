@@ -8,7 +8,7 @@ import javax.xml.bind.annotation.XmlElement;
 @XmlRootElement(name = "userFile")
 public class UserFile {
 @XmlElement(name = "fileId")
-private static Integer fileId;
+private Integer fileId;
 @XmlElement(name = "filePath")
 private String filePath;
 @XmlElement(name = "fileData")
@@ -21,7 +21,7 @@ public UserFile(int fileId, String filePath, String fileData) {
 	this.fileData = fileData;
 	this.filePath = filePath;
 }
-public static Integer getFileId() {
+public Integer getFileId() {
 	return fileId;
 }
 public void setFileId(Integer fileId) {

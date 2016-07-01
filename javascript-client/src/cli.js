@@ -1,171 +1,145 @@
 import vorpal from 'vorpal'
 import net from 'net'
 import fs from 'fs'
+import { hash, compare } from './hashing'
 
-import createUser from './model/user'
-import createFile from './model/File'
-import { hash, compareHash } from './lib/hash'
-
-/* constant variables */
 const cli = vorpal()
+let server
 const host = 'localhost'
 const port = 667
-
-/* initialize variables */
-let loggedin = false // when not logged in, it will be false, when logged in it will take on the username
-let server
-let buffer
-
+const users = {}
+let Userlogged = false
+/*
+*Connects With the Client with the Server
+*/
 /* Server functions to connect, close, and write to our server */
-const connectToServer = () => {
+const ServerConnection = () => {
   server = net.createConnection(port, host, () => {
     return 0
   })
 }
 
-const closeConnection = () => {
+const DisconnectServer = (server) => {
   server.end()
 }
-
 const writeTo = (string) => server.write(string + '\n')
-
-const writeJSONUser = (object) => {
-  server.write(JSON.stringify({ 'user': object }) + '\n')
-}
 
 const writeJSONFile = (object) => {
   server.write(JSON.stringify({ 'files': object }) + '\n')
 }
-
-/* Login command
-    Takes a username, password, and authenticates the hash, if successful
-    we log in
+const createFile = (filepath, buffer, username) => {
+  return {
+    'filePath': filepath,
+    'buffer': buffer,
+    'username': username
+  }
+}
+/*
+register <username> <password>
+    * registers a new user with the application
+    * the plaintext password willn't be stored anywhere, ever
+    * the password will be hashed for storage according to the bcrypt algorithm
 */
-cli
-  .command('login <username> <password>')
-  .description('Logs you in')
-  .action((args, callback) => {
-    /*
-    let a = hash(args.password)
-    let hashTo
-    a.then((hashed) => hashTo = hashed)
-    .then(() => connectToServer())
-    .then(() => writeJSONUser(createUser(args.username, hashTo)))
-    .then(() => closeConnection())
-    .then(() => cli.log('You successfully registered!'))
-    .catch((err) => cli.log(`There was an error when registering: ${err}`))
-    */
-    connectToServer()
-    writeTo(`passhashget ${args.username}`)
-    server.on('data', (d) => {
-      let hashServer = d.toString()
-      let comparing = compareHash(args.password, hashServer)
-      comparing.then((res) => {
-        if (res) {
-          loggedin = args.username
-          cli.log(`You have now logged in as ${loggedin}`)
-        } else {
-          cli.log('Please check your username or password again.')
-        }
-      })
-    })
-    closeConnection()
-    callback()
+const register = cli.command('register <username> <password>')
+register
+.description('Registers a user with this application')
+.action(function (args, callback) {
+  ServerConnection()
+  return (
+    Promise.resolve(users[args.username] !== undefined)
+    .then(
+      (alreadyRegistered) =>
+       alreadyRegistered
+       ? this.log('Username already Registered ! Choose another name')
+       : hash(args.password)
+              .then((hashedPassword) => users[args.username] = hashedPassword)
+              .then(() => this.log('Registration successful!'))
+      )
+      .catch((err) => this.log(`An error occurred: ${err}`))
+  )
+})
+DisconnectServer()
+/*
+login <username> <password>
+    * logs a user in to the command line interface
+    * the plaintext password willn't be stored anywhere, ever
+    * the commandline application should store the user details necessary for logged-in functionality
+    * the hashed password will be compared on the client side
+*/
+const login = cli.command('login <username> <password>')
+login
+  .description('Login with a specified username and password')
+  .init(function (args, callabck) {
+    server = net.createConnection()
   })
+  .action(function (args, cb) {
+    ServerConnection()
+    return (
+      Promise.resolve(users[args.username])
+        .then(
+          (hashedPassword) =>
+            hashedPassword === undefined
+              ? this.log('Username or password incorrect. Try again!')
+              : compare(args.password, hashedPassword)
+                .then((correctPassword) => {
+                  if (correctPassword) {
+                    Userlogged = args.username
+                    ? this.log('Successfully logged in!')
+                    : this.log('Username or password incorrect. Try again!')
+                  }
+                })
+        )
+        .catch((err) => this.log(`An error occurred: ${err}`))
+    )
+  })
+DisconnectServer()
 
-/* Logout command
-  If you are logged in, it logs you out
-*/
 cli
   .command('logout')
   .description('Logs you out, if you are logged in')
   .action((callback) => {
-    if (!loggedin) {
+    if (!Userlogged) {
       cli.log('You are not logged in. You have to be logged in to log out.')
     } else {
-      loggedin = false
+      Userlogged = false
     }
     callback()
   })
-
-/* amiloggedin
-    If you are logged in, it tells you your username
-*/
-cli
-  .command('amiloggedin')
-  .description('Tells if you are logged in and what user you are logged in as')
-  .action((args, callback) => {
-    if (!loggedin) {
-      cli.log('You are not logged in. Please register or log in.')
-    } else {
-      cli.log(`You are logged in as ${loggedin}! If you would like to log out, type in logout`)
-    }
+   /*  files
+    * Checks whether the user is logged-in
+    * retrieves a list of files previously stored by the user
+    * displays the file ids and paths as stored in the database
+    */
+const files = cli.command('Files')
+files
+.description('Displays list of files')
+.action((args, callback) => {
+  if (!Userlogged) {
+    cli.log('You are not logged in. You have to be logged in to access')
+  } else {
+    ServerConnection()
+    writeTo(`getlist ${Userlogged}`)
+    server.on('data', (d) => {
+      cli.log(d.toString())
+    })
+    DisconnectServer()
     callback()
-  })
-/* Register command
-    Takes your username and password, and registers with the server
+  }
+})
+/*
+upload <local file path> [path stored in database]
+    * Checks whether the user is logged-in
+    * selects a local file based on the local file path
+    * reads that file and send it to the server
+    * optionally allows the user to save the file in the database under a different specified path
 */
-cli
-  .command('register <username> <password>')
-  .description('Register your user to our database')
+const upload = cli.command('upload <localFilePath> [pathStoredInTheDatabase]')
+upload
+.description('Uploads the local file paths')
+.description('Upload a file to you')
   .action((args, callback) => {
-    let a = hash(args.password)
-    let hashTo
-    a.then((hashed) => hashTo = hashed)
-    .then(() => connectToServer())
-    .then(() => writeJSONUser(createUser(args.username, hashTo)))
-    .then(() => closeConnection())
-    .then(() => cli.log('You successfully registered!'))
-    .catch((err) => cli.log(`There was an error when registering: ${err}`))
-  })
-
-/* Download file
-    Takes a fileId, if the user is logged in, and downloads it. If a path is specified,
-    it saves it to that, otherwise takes the pathname from the database
-*/
-
-cli
-  .command('download <fileid> [filepath]')
-  .description('Downloads a file from your database')
-  .action((args, callback) => {
-    if (!loggedin) {
-      cli.log('Sorry if you wish to use this command, please try to log in!')
-    } else {
-      connectToServer()
-      writeTo(`getfile ${args.fileid}`)
-      server.on('data', (d) => {
-        let filePathToSave
-        let parsed = JSON.parse((d.toString()))
-        if (!args.filepath) {
-          filePathToSave = parsed.files.filePath
-        } else {
-          filePathToSave = args.filepath
-        }
-        let buffer = Buffer.from(parsed.files.buffer, 'base64')
-        fs.open(filePathToSave, 'w', (err, fd) => {
-          if (err) cli.log(`Error opening file to write file: ${err}`)
-          fs.write(fd, buffer, 0, buffer.length, null, (err) => {
-            if (err) cli.log(`Error writing to file: ${err}`)
-            fs.close(fd, () => {
-              cli.log(`File written to ${filePathToSave}!`)
-            })
-          })
-        })
-      })
-    }
-    closeConnection()
-    callback()
-  })
-/* Upload command
-    takes a file path from the local machine, and if the user wants to save it somewhere else, that gets passed in.
-    Converts the file to a base64 string and passed to the server for storage
-*/
-cli
-  .command('upload <absolutefilepath> [pathfordatabase]')
-  .description('Upload a file to you')
-  .action((args, callback) => {
-    if (!loggedin) {
-      cli.log('Sorry if you wish to use this command, please try to log in!')
+    if (!Userlogged) {
+      cli.log('You are not logged in. You have to be logged in to access')
     } else {
       let filePathToUpload
       if (!args.pathfordatabase) {
@@ -173,44 +147,60 @@ cli
       } else {
         filePathToUpload = args.pathfordatabase
       }
-      connectToServer()
+      ServerConnection()
       fs.open(args.absolutefilepath, 'r', (err, fd) => {
         if (err) {
           cli.log(`There was an error opening the file to send: ${err}`)
         }
-        buffer = new Buffer.alloc(fs.statSync(args.absolutefilepath).size)
+        let buffer = new Buffer.alloc(fs.statSync(args.absolutefilepath).size)
         fs.read(fd, buffer, 0, buffer.length, 0, (err, num) => {
           if (err) {
             cli.log(`There was an error opening the file to send: ${err}`)
           }
-          writeJSONFile(createFile(filePathToUpload, buffer.toString('base64'), loggedin))
+          writeJSONFile(createFile(filePathToUpload, buffer.toString('base64'), Userlogged))
           if (err) throw err
         })
       })
     }
-    closeConnection()
+    DisconnectServer()
     callback()
   })
-
-/* Files command
-    List files for specified user, if logged in
+/*
+    * download <database file id> [local file path]
+    * requests a file from the server with the specified id
+    * by default, it stores that file locally under the path stored in the database
+    * the user should be optionally able to specify an alternate local path
 */
-
-cli
-  .command('files')
-  .description('Retrieve list of files')
-  .action((args, callback) => {
-    if (!loggedin) {
-      cli.log('Sorry if you wish to use this command, please try to log in!')
-    } else {
-      connectToServer()
-      writeTo(`getlist ${loggedin}`)
-      server.on('data', (d) => {
-        cli.log(d.toString())
+const download = cli.command('download <databaseFileId> [localFilePath]')
+download
+.description('Downloads file from your database')
+.action((args, callback) => {
+  if (!Userlogged) {
+    cli.log('You are not logged in. You have to be logged in to access')
+  } else {
+    ServerConnection()
+    writeTo(`getfile ${args.fileid}`)
+    server.on('data', (d) => {
+      let filePathToSave
+      let parsed = JSON.parse((d.toString()))
+      if (!args.filepath) {
+        filePathToSave = parsed.files.filePath
+      } else {
+        filePathToSave = args.filepath
+      }
+      let buffer = Buffer.from(parsed.files.buffer, 'base64')
+      fs.open(filePathToSave, 'w', (err, fd) => {
+        if (err) cli.log(`Error opening file to write file: ${err}`)
+        fs.write(fd, buffer, 0, buffer.length, null, (err) => {
+          if (err) cli.log(`Error writing to file: ${err}`)
+          fs.close(fd, () => {
+            cli.log(`File written to ${filePathToSave}!`)
+          })
+        })
       })
-      closeConnection()
-      callback()
-    }
-  })
-
+    })
+  }
+  DisconnectServer()
+  callback()
+})
 export default cli
