@@ -47,7 +47,27 @@ public class ClientHander implements Runnable {
 				switch (message1.getCommand()) {
 				case "register": message.registerUser(message1);; break;
 				case "login": message.loginUser(message1); break;
-				default: 
+				default: // Functions allowed only while logged in
+					int delimIndex = message1.getCommand().indexOf('*');
+					if (delimIndex == -1) {
+						log.info("Session IDs do not match.");
+						writer.write("{\"response\":{\"message\":\"*error*Login credentials are incorrect\"}}");
+						writer.flush();
+					} else {
+						String connSessionID = message1.getCommand().substring(delimIndex + 1);
+						if (connSessionID.equals(message1.getCommand()))
+							log.info("Session IDs match!");
+						String newMessage = message1.getCommand().substring(0, delimIndex);
+						switch (newMessage) {
+						case "upload": message.uploadFileD(connSessionID, message1.getContent()); break;
+						case "download": message.downloadFileD(connSessionID, message1.getContent(), delimIndex); break;
+				
+						default:
+							log.warn("Invalid message type: {}", newMessage);
+							writer.write("{\"response\":{\"message\":\"*error*Error in handling command.\"}}");
+							writer.flush();
+						}
+					}
 				}
 			}
 		} catch (IOException | JAXBException e) {

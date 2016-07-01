@@ -21,7 +21,7 @@ public class Server implements Runnable {
 	private Logger log = LoggerFactory.getLogger(Server.class);
 
 	private ExecutorService executor;
-	private ServerSocket serverSocket;
+	 ServerSocket serverSocket;
 	private FileDao fileDao;
 	private UserDao userDao;
 	
