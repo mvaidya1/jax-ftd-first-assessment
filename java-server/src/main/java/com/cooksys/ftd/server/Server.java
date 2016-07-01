@@ -5,8 +5,6 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 
 import org.slf4j.Logger;
@@ -24,14 +22,14 @@ public class Server implements Runnable {
 
 	private ExecutorService executor;
 	private ServerSocket serverSocket;
-
 	private FileDao fileDao;
 	private UserDao userDao;
 	
 	public void run() {
-		try {
+		try (ServerSocket serverSocket = new ServerSocket(667)) {
+			log.info("Starting server.");
 			while (true) {
-				Socket socket = this.serverSocket.accept();
+				Socket socket = serverSocket.accept();
 				ClientHander handler = this.createClientHandler(socket);
 				this.executor.execute(handler);
 			}
@@ -52,14 +50,6 @@ public class Server implements Runnable {
 		handler.setUserDao(userDao);
 
 		return handler;
-	}
-
-	public Logger getLog() {
-		return log;
-	}
-
-	public void setLog(Logger log) {
-		this.log = log;
 	}
 
 	public ExecutorService getExecutor() {
@@ -93,5 +83,4 @@ public class Server implements Runnable {
 	public void setUserDao(UserDao userDao) {
 		this.userDao = userDao;
 	}
-	
 }

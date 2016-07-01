@@ -1,8 +1,6 @@
 package com.cooksys.ftd.assessment.filesharing;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -29,34 +27,26 @@ public class Main {
 		ExecutorService executor = Executors.newCachedThreadPool(); // initialize
 																	// thread
 																	// pool
-
 		try (Connection conn = DriverManager.getConnection(url, username, password)) {
-
-			Server server = new Server(); // init server
-
+			log.debug("SQL connection successful");
+			Server server = new Server();  
 			server.setExecutor(executor);
+			UserDao userDao = new UserDao(); 
+			userDao.setConn(conn);
+			server.setUserDao(userDao);
 
 			FileDao fileDao = new FileDao();
 			fileDao.setConn(conn);
 			server.setFileDao(fileDao);
 
-			UserDao userDao = new UserDao();
-			userDao.setConn(conn);
-			server.setUserDao(userDao);
-
-			Future<?> serverFuture = executor.submit(server); // start server
-																// (asynchronously)
-
-			serverFuture.get(); // blocks until server's #run() method is done
-								// (aka the server shuts down)
+			Future<?> serverFuture = executor.submit(server);
+			serverFuture.get();
 
 		} catch (SQLException | InterruptedException | ExecutionException e) {
-			log.error("An error occurred during server startup. Shutting down after error log.", e);
+			log.error("We have encountered an error trying to start the server. {}", e);
 		} finally {
-			executor.shutdown(); // shutdown thread pool (see inside of try
-									// block for blocking call)
+			executor.shutdown();
 		}
-
-	}
-
+		
+}
 }

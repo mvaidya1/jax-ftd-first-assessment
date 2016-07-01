@@ -1,11 +1,15 @@
 package com.cooksys.ftd.inserts.model.db;
-
+import javax.xml.bind.annotation.XmlElement;
+import javax.xml.bind.annotation.XmlRootElement;
+@XmlRootElement(name = "user")
 public class User {
-
+	@XmlElement(name = "userId")
 	private Integer userId;
+	@XmlElement(name = "username")
 	private String username;
+	@XmlElement(name = "password")
 	private String password;
-
+	
 	public User() {
 		super();
 	}
